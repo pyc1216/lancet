@@ -70,7 +70,10 @@ public:
 	*/
 		
 	bool LR_MODE;
+	bool isSomatic;
 	unsigned short kmer;
+	// similar variants(have same getSignature and isSomatic) from different window(default 600bp, step=100bp)
+	unsigned short similar_variants_count;
 	string chr;
 	int pos;
 	char type;
@@ -103,7 +106,8 @@ public:
 	char prev_bp_ref; // base-pair preceding the mutation in reference
 	char prev_bp_alt; // base-pair preceding the mutation in alternative
 	
-	Variant_t(bool mode, string chr_, int pos_, string ref_, string alt_, 
+	Variant_t(bool mode, string chr_, int pos_, string ref_, string alt_, bool isS,
+		unsigned short svc,
 		const pair <int,int> & RCN, const pair <int,int> & RCT,
 		const pair <int,int> & ACN, const pair <int,int> & ACT,
 		const array<unsigned short,3> & HPRN_, const array<unsigned short,3> & HPRT_, 
@@ -123,6 +127,8 @@ public:
 		//strcpy(chr, chr_.c_str());
 		
 		pos = pos_;
+		isSomatic = isS;
+		similar_variants_count = svc;
 		
 		/*
 		if(ref_.at(0) == '-') { type = 'I'; ref_ = ""; len = alt_.length(); }  // deletion
@@ -180,6 +186,7 @@ public:
 	}
 	
 	string printVCF(Filters * fs);
+	string printVcfWithoutFilters();
 	string genotype(int R, int A);
 	char bestState(int Rn, int An, int Rt, int At);
 	string getSignature() const;

@@ -222,6 +222,186 @@ string Variant_t::printVCF(Filters * fs) {
 	return vcfline.str();
 }
 
+
+
+string Variant_t::printVcfWithoutFilters() {
+	//CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  Pat4-FF-Normal-DNA      Pat4-FF-Tumor-DNA
+	string ID = ".";
+	string FILTER = "";
+	
+	int tot_ref_cov_tumor = ref_cov_tumor_fwd + ref_cov_tumor_rev;	
+	int tot_alt_cov_tumor = alt_cov_tumor_fwd + alt_cov_tumor_rev;
+
+	int tot_ref_cov_normal = ref_cov_normal_fwd + ref_cov_normal_rev;	
+	int tot_alt_cov_normal = alt_cov_normal_fwd + alt_cov_normal_rev;
+		
+	double fet_score = compute_FET_score(); // compute FET score
+	double fet_score_strand_bias = compute_SB_score(); // compute strand bias score
+	
+	double fet_score_haplotype_normal = 0.0;
+	double fet_score_haplotype_tumor = 0.0;
+	double fet_score_haplotype_pair = 0.0;
+	if (LR_MODE) {
+		fet_score_haplotype_normal = compute_HP_score(HPRN[0], HPRN[1], HPAN[0], HPAN[1]);
+		fet_score_haplotype_tumor = compute_HP_score(HPRT[0], HPRT[1], HPAT[0], HPAT[1]);
+		fet_score_haplotype_pair = compute_HP_score(HPRN[0]+HPAN[0], HPRN[1]+HPAN[1], HPRT[0]+HPAT[0], HPRT[1]+HPAT[1]);
+	}
+	
+	string status = "?";
+	char flag = bestState(tot_ref_cov_normal,tot_alt_cov_normal,tot_ref_cov_tumor,tot_alt_cov_tumor);
+	if(flag == 'T') { status = "SOMATIC"; }
+	else if(flag == 'S') { status = "SHARED"; }
+	else if(flag == 'L') { status = "LOH"; }
+	else if(flag == 'N') { status = "NORMAL"; }
+	else if(flag == 'E') { status = "NONE"; return ""; } // do not print varaints without support
+		
+	string INFO = status + ";FETS=" + dtos(fet_score);
+	if(type=='I') { INFO += ";TYPE=ins"; }
+	if(type=='D') { INFO += ";TYPE=del"; }
+	if(type=='S') { INFO += ";TYPE=snv"; }
+	if(type=='C') { INFO += ";TYPE=complex"; }
+	
+	INFO += ";LEN=" + itos(len) + ";KMERSIZE=" + itos(kmer) + ";SB=" + dtos(fet_score_strand_bias);
+	
+	if (LR_MODE) { // in linked-read mode add fet-score of haplotype bias in the tumor/normal
+		INFO += ";HPS=" + dtos(fet_score_haplotype_pair) + ";HPSN=" + dtos(fet_score_haplotype_normal) + ";HPST=" + dtos(fet_score_haplotype_tumor) ;
+	}
+	
+	if(!str.empty()) { INFO += ";MS=" + str; } // add STR info
+	//if(strcmp(str,"")!=0) { string str_string(str);  INFO += ";MS=" + str_string; } // add STR info
+	
+	double QUAL = fet_score;	
+	// apply filters
+	
+	int tumor_cov = tot_ref_cov_tumor + tot_alt_cov_tumor;
+	double tumor_vaf = (tumor_cov == 0) ? 0 : ((double)tot_alt_cov_tumor/(double)tumor_cov);
+		
+	int normal_cov = tot_ref_cov_normal + tot_alt_cov_normal;
+	double normal_vaf = (normal_cov == 0) ? 0 : ((double)tot_alt_cov_normal/(double)normal_cov);
+		
+	//if (fs == NULL) { cerr << "Error: filters not assigned" << endl; }
+	
+#if 0
+	//if(strcmp(str,"")!=0) { 
+	if(!str.empty()) { // STR variant
+		if(fet_score < fs->minPhredFisherSTR) {
+			if (FILTER.compare("") == 0) { FILTER = "LowFisherSTR"; }
+			else { FILTER += ";LowFisherSTR"; }
+		}
+	}
+	// non-STR variant
+	else if(fet_score < fs->minPhredFisher) { 
+		if (FILTER.compare("") == 0) { FILTER = "LowFisherScore"; }
+		else { FILTER += ";LowFisherScore"; }
+	}
+	
+	// the following filters are applied to all variants
+	//if(fet_score < fs->minPhredFisher) { 
+	//	if (FILTER.compare("") == 0) { FILTER = "LowFisherScore"; }
+	//	else { FILTER += ";LowFisherScore"; }
+	//}
+	
+	if(normal_cov < fs->minCovNormal) { 
+		if (FILTER.compare("") == 0) { FILTER = "LowCovNormal"; }
+		else { FILTER += ";LowCovNormal"; }	
+	}
+	if(normal_cov > fs->maxCovNormal) { 
+		if (FILTER.compare("") == 0) { FILTER = "HighCovNormal"; }
+		else { FILTER += ";HighCovNormal"; }	
+	}
+	if(tumor_cov < fs->minCovTumor) { 
+		if (FILTER.compare("") == 0) { FILTER = "LowCovTumor"; }
+		else { FILTER += ";LowCovTumor"; }	
+	}
+	if(tumor_cov > fs->maxCovTumor) { 
+		if (FILTER.compare("") == 0) { FILTER = "HighCovTumor"; }
+		else { FILTER += ";HighCovTumor"; }	
+	}
+	if(tumor_vaf < fs->minVafTumor) { 
+		if (FILTER.compare("") == 0) { FILTER = "LowVafTumor"; }
+		else { FILTER += ";LowVafTumor"; }	
+	}
+	if(normal_vaf > fs->maxVafNormal) { 
+		if (FILTER.compare("") == 0) { FILTER = "HighVafNormal"; }
+		else { FILTER += ";HighVafNormal"; }	
+	}
+	if(tot_alt_cov_tumor < fs->minAltCntTumor) { 
+		if (FILTER.compare("") == 0) { FILTER = "LowAltCntTumor"; }
+		else { FILTER += ";LowAltCntTumor"; }	
+	}
+	if(tot_alt_cov_normal > fs->maxAltCntNormal) { 
+		if (FILTER.compare("") == 0) { FILTER = "HighAltCntNormal"; }
+		else { FILTER += ";HighAltCntNormal"; }
+	}
+	
+	
+	// snv specific filters
+	//if( (type == 'S') && (tot_alt_cov_tumor > 2) ) { // for snv strand bias filter is applied at all coverages
+		if( (alt_cov_tumor_fwd < fs->minStrandBias) || (alt_cov_tumor_rev < fs->minStrandBias) ) { 
+			if (FILTER.compare("") == 0) { FILTER = "StrandBias"; }
+			else { FILTER += ";StrandBias"; }
+		}
+	//}
+	
+
+		
+	if (LR_MODE) {
+		if( (flag == 'T') && (HPAT[0]>0) && (HPAT[1]>0) ) { // apply HP filter only to somatic variants
+			if (FILTER.compare("") == 0) { FILTER = "MultiHP"; }
+			else { FILTER += ";MultiHP"; }
+		}
+	}
+#endif
+			
+	if(FILTER.compare("") == 0) { FILTER = "PASS"; }
+		
+	//compute genotype	
+	string GT_normal = genotype((ref_cov_normal_fwd+ref_cov_normal_rev),(alt_cov_normal_fwd+alt_cov_normal_rev));
+	string GT_tumor = genotype((ref_cov_tumor_fwd+ref_cov_tumor_rev),(alt_cov_tumor_fwd+alt_cov_tumor_rev));
+		
+	string BX_normal = bxset_ref_N + "," + bxset_alt_N;
+	string BX_tumor  = bxset_ref_T + "," + bxset_alt_T;
+		
+	string NORMAL = "";
+	string TUMOR = "";
+	string FORMAT = "GT:AD:SR:SA:DP";
+	
+	NORMAL = GT_normal + ":" + 
+		itos(tot_ref_cov_normal) + "," + itos(tot_alt_cov_normal) + ":" + 
+		itos(ref_cov_normal_fwd) + "," + itos(ref_cov_normal_rev) + ":" + 
+		itos(alt_cov_normal_fwd) + "," + itos(alt_cov_normal_rev) + ":" + 
+		itos(tot_ref_cov_normal+tot_alt_cov_normal);
+
+	TUMOR = GT_tumor + ":" + 
+		itos(tot_ref_cov_tumor) + "," + itos(tot_alt_cov_tumor) + ":" + 
+		itos(ref_cov_tumor_fwd) + "," + itos(ref_cov_tumor_rev) + ":" + 
+		itos(alt_cov_tumor_fwd) + "," + itos(alt_cov_tumor_rev) + ":" + 
+		itos(tot_ref_cov_tumor+tot_alt_cov_tumor);
+
+	if (LR_MODE) {
+		
+		FORMAT += ":HPR:HPA:BX";
+		
+		string HPrefN = itos(HPRN[0]) + "," + itos(HPRN[1]) + "," + itos(HPRN[2]);
+		string HPaltN = itos(HPAN[0]) + "," + itos(HPAN[1]) + "," + itos(HPAN[2]);
+		string HPrefT = itos(HPRT[0]) + "," + itos(HPRT[1]) + "," + itos(HPRT[2]);
+		string HPaltT = itos(HPAT[0]) + "," + itos(HPAT[1]) + "," + itos(HPAT[2]);
+	
+		NORMAL += ":" + HPrefN + ":" + HPaltN + ":" + BX_normal;
+		TUMOR += ":" + HPrefT + ":" + HPaltT + ":" + BX_tumor;
+	}
+	
+    std::stringstream vcfline;
+		
+	vcfline << chr << "\t" << pos << "\t" << ID << "\t" << ref << "\t" << alt << "\t" << QUAL << "\t" << FILTER << "\t" << INFO << "\t" << FORMAT << "\t" << NORMAL << "\t" << TUMOR << endl;	
+	//cout << vcfline;
+	
+	return vcfline.str();
+}
+
+
+
+
 // compute genotype info in VCF format (GT field)
 //////////////////////////////////////////////////////////////
 string Variant_t::genotype(int R, int A) {

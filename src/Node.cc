@@ -333,6 +333,29 @@ ostream & Node_t::print(ostream & out) const
 
 	return out;
 }
+// printx
+ostream & Node_t::printx(ostream & out) const
+{
+	out << nodeid_m;
+
+	out << ", str_m=" << str_m;
+	out << ", cov_tmr_m_fwd=" << cov_tmr_m_fwd;
+	out << ", cov_tmr_m_rev=" << cov_tmr_m_rev;
+	out << ", cov_nml_m_fwd=" << cov_nml_m_fwd;
+	out << ", cov_nml_m_rev=" << cov_nml_m_rev;
+	out << ", isRef()=" << isRef() << endl;
+
+	/*
+	for (unsigned int i = 0; i < edges_m.size(); ++i)
+	{
+		out << "\t" << edges_m[i];
+	}
+	*/
+
+	return out;
+}
+
+
 
 // strlen
 //////////////////////////////////////////////////////////////
@@ -417,7 +440,7 @@ int Node_t::cntReadCode(char code)
 }
 
 // isstatusCnt
-// return true if more than 80% of the postions in the nodes are 
+// return true if more equal than 80% of the postions in the nodes are 
 // of type c (T or N)
 //////////////////////////////////////////////////////////////
 bool Node_t::isStatusCnt(char c) {
@@ -433,8 +456,8 @@ bool Node_t::isStatusCnt(char c) {
 	}
 	
 	double prcnt = (double(cnt)/double(N));
-	if ( prcnt > 0.8) { ans = true; }
-	//cerr << "Percent tumor: " << prcnt << " " << cnt << "/" << N << endl;
+	if ( prcnt >= 0.8) { ans = true; }
+	// cerr << "Percent tumor: " << prcnt << " " << cnt << "/" << N << endl;
 	
 	return ans;
 }

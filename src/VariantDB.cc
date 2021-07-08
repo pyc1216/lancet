@@ -27,19 +27,24 @@
 // add variant to DB and update counts per position
 void VariantDB_t::addVar(const Variant_t & v) {
 	
-	string key = sha256(v.getSignature());	
+	string key = itos(v.isSomatic) + sha256(v.getSignature());
+	// string key = sha256(v.getSignature());
     map<string,Variant_t>::iterator it_v = DB.find(key);	
+	// a ratio when somatic status dose not match.
+	// float cover_ratio = 1.5;
 	
 	//bool flag = false;
 	
 	if (it_v != DB.end()) {
 		// keep variant at location with highest total coverage (tumor + normal)
 		
+		// bool old_isSomatic = it_v->second.isSomatic;
 		int old_ref_cov_normal = it_v->second.ref_cov_normal_fwd + it_v->second.ref_cov_normal_rev;
 		int old_ref_cov_tumor = it_v->second.ref_cov_tumor_fwd + it_v->second.ref_cov_tumor_rev;
 		int old_alt_cov_normal = it_v->second.alt_cov_normal_fwd + it_v->second.alt_cov_normal_rev;
 		int old_alt_cov_tumor = it_v->second.alt_cov_tumor_fwd + it_v->second.alt_cov_tumor_rev;
 		
+		// bool new_isSomatic = v.isSomatic;
 		int new_ref_cov_normal = v.ref_cov_normal_fwd + v.ref_cov_normal_rev;
 		int new_ref_cov_tumor = v.ref_cov_tumor_fwd + v.ref_cov_tumor_rev;
 		int new_alt_cov_normal = v.alt_cov_normal_fwd + v.alt_cov_normal_rev;
@@ -48,17 +53,31 @@ void VariantDB_t::addVar(const Variant_t & v) {
 		int old_tot_cov = old_ref_cov_normal + old_ref_cov_tumor + old_alt_cov_normal + old_alt_cov_tumor;
 		int new_tot_cov = new_ref_cov_normal + new_ref_cov_tumor + new_alt_cov_normal + new_alt_cov_tumor;
 		
+		// update count
+		// unsigned short svc = it_v->second.similar_variants_count;
+		it_v->second.similar_variants_count ++;
 		if(old_tot_cov < new_tot_cov) {
-			
 			/*
-			cerr << "*** Variant replacement ***" << endl;
-			cerr << "Key: " << v.getSignature() << endl;
-			cerr << "Old var: " << it_v->second.printVCF() << endl;
-			Variant_t tmp = v;
-			cerr << "New var: " << tmp.printVCF() << endl;
-			cerr << "***************************" << endl;
+			// if somatic status not match and less than cover_ratio, give up update variant.
+			cerr << "old_tot_cov * cover_ratio: " << old_tot_cov * cover_ratio << endl;
+			cerr << "new_tot_cov: " << new_tot_cov << endl;
+			if (old_isSomatic != new_isSomatic && old_tot_cov * cover_ratio > new_tot_cov) {
+				cerr << "*** Variant replacement failed ***" << endl;
+				cerr << "Key: " << v.getSignature() << endl;
+				cerr << "Old var: " << it_v->second.printVcfWithoutFilters() << endl;
+				Variant_t tmp = v;
+				cerr << "New var: " << tmp.printVcfWithoutFilters() << endl;
+				cerr << "***************************" << endl;
+			}
 			*/
-			
+			cerr << "*** Variant replacement ***" << endl;
+			cerr << "Signature: " << v.getSignature() << ", isSomatic: " << itos(v.isSomatic) << endl;
+			cerr << "Old var: " << it_v->second.printVcfWithoutFilters() << endl;
+			Variant_t tmp = v;
+			cerr << "New var: " << tmp.printVcfWithoutFilters() << endl;
+			cerr << "Current similar variants counts: " << itos(it_v->second.similar_variants_count) <<endl;
+			cerr << "***************************" << endl;
+			// it_v->second.isSomatic = v.isSomatic;
 			it_v->second.kmer = v.kmer;
 			
 			it_v->second.ref_cov_normal_fwd = v.ref_cov_normal_fwd;
@@ -80,15 +99,115 @@ void VariantDB_t::addVar(const Variant_t & v) {
 				it_v->second.bxset_ref_T = v.bxset_ref_T;
 				it_v->second.bxset_alt_N = v.bxset_alt_N;
 				it_v->second.bxset_alt_T = v.bxset_alt_T;
-			}
 			
-			//it_v->second.reGenotype(); // recompute genotype
+				//it_v->second.reGenotype(); // recompute genotype
+			}
 		}
 	}
 	else { 
 		DB.insert(pair<string,Variant_t>(key,v));
 	}
 }
+
+// select variant supported by most windows
+void VariantDB_t::selectVar() {
+	// a ratio when somatic status dose not match && have same similar_variants_count .
+	// float cover_ratio = 1.5;
+	for (map<string, Variant_t>::iterator it_v = DB.begin(); it_v != DB.end(); ++it_v) {
+		string key = it_v->first;
+		string isSomatic = key.substr(0, 1);
+		string signature = key.substr(1);
+		string isSomatic2 = (isSomatic=="1") ? "0": "1";
+		string key2 = isSomatic2 + signature;
+		map<string, Variant_t>::iterator it_v2 = DB.find(key2);
+		if (it_v2 == DB.end())
+			continue;
+		bool select_success = 1;
+		// map<string, Variant_t>::iterator select_v; // = DB.begin();
+		// map<string, Variant_t>::iterator discard_v; // = DB.begin();
+		string select_reason;
+		Variant_t select_v = it_v->second;
+		Variant_t discard_v = it_v2->second;
+		
+		int svc = it_v->second.similar_variants_count;
+		int svc2 = it_v2->second.similar_variants_count;
+		if (svc > svc2) {
+			// Variant_t select_v = it_v->second;
+			// Variant_t discard_v = it_v2->second;
+			select_reason = "Select by similar-variants-count. Select:" + itos(svc) + ", Discard:" + itos(svc2);
+			DB.erase(it_v2);
+		}
+		else if (svc < svc2) {
+			Variant_t tmp = select_v;
+			select_v = discard_v;
+			discard_v = tmp;
+			select_reason = "Select by similar-variants-count. Select:" + itos(svc2) + ", Discard:" + itos(svc);
+			DB.erase(it_v++);
+		}
+		else {
+			int ref_cov_normal_1 = it_v->second.ref_cov_normal_fwd + it_v->second.ref_cov_normal_rev;
+			int ref_cov_tumor_1 = it_v->second.ref_cov_tumor_fwd + it_v->second.ref_cov_tumor_rev;
+			int alt_cov_normal_1 = it_v->second.alt_cov_normal_fwd + it_v->second.alt_cov_normal_rev;
+			int alt_cov_tumor_1 = it_v->second.alt_cov_tumor_fwd + it_v->second.alt_cov_tumor_rev;
+			
+			int ref_cov_normal_2 = it_v2->second.ref_cov_normal_fwd + it_v2->second.ref_cov_normal_rev;
+			int ref_cov_tumor_2 = it_v2->second.ref_cov_tumor_fwd + it_v2->second.ref_cov_tumor_rev;
+			int alt_cov_normal_2 = it_v2->second.alt_cov_normal_fwd + it_v2->second.alt_cov_normal_rev;
+			int alt_cov_tumor_2 = it_v2->second.alt_cov_tumor_fwd + it_v2->second.alt_cov_tumor_rev;
+			
+			int tot_cov_1 = ref_cov_normal_1 + ref_cov_tumor_1 + alt_cov_normal_1 + alt_cov_tumor_1;
+			int tot_cov_2 = ref_cov_normal_2 + ref_cov_tumor_2 + alt_cov_normal_2 + alt_cov_tumor_2;
+			select_reason = "Same similar-variants-count("+ itos(svc) + ", " + itos(svc2) + "). ";
+			if (tot_cov_1 > tot_cov_2) {
+				// Variant_t select_v = it_v->second;
+				// Variant_t discard_v = it_v2->second;
+				select_reason += "Select by  total-coverage. Select:" + itos(tot_cov_1) + ", Discard:" + itos(tot_cov_2);
+				DB.erase(it_v2);
+			}
+			else if (tot_cov_1 < tot_cov_2) {
+				// Variant_t select_v = it_v2->second;
+				// Variant_t discard_v = it_v->second;
+				Variant_t tmp = select_v;
+				select_v = discard_v;
+				discard_v = tmp;
+				select_reason += "Select by  total-coverage. Select:" + itos(tot_cov_2) + ", Discard:" + itos(tot_cov_1);
+				DB.erase(it_v++);
+			}
+			else {
+				// retain all
+				select_reason = "Have same similar-variants-count(" + itos(svc) + ", " + itos(svc2) + ") and total-coverage(" + itos(tot_cov_1) + ", " + itos(tot_cov_2) + ")";
+				select_success = 0;
+			}
+		}
+		if (select_success)	{
+			cerr << "***** Variant select *****" << endl;
+			cerr << "Signature: " << select_v.getSignature() << endl;
+			cerr << "Select variant: " << select_v.printVcfWithoutFilters() << endl;
+			cerr << "               Somatic Status: " << itos(select_v.isSomatic) << endl;
+			cerr << "Discard variant: " << discard_v.printVcfWithoutFilters() << endl;
+			cerr << "               Somatic Status: " << itos(discard_v.isSomatic) << endl;
+			cerr << "Reason: " << select_reason << endl;
+			cerr << "***************************" << endl;
+		}
+		else {
+			cerr << "** Variant select failed **" << endl;
+			cerr << "Signature: " << it_v->second.getSignature() << endl;
+			cerr << "Retain both variants: " << endl;
+			cerr << "First variant: " << it_v->second.printVcfWithoutFilters() << endl;
+			cerr << "               Somatic Status: " << itos(it_v->second.isSomatic) << endl;
+			cerr << "Second variant: " << it_v2->second.printVcfWithoutFilters() << endl;
+			cerr << "               Somatic Status: " << itos(it_v2->second.isSomatic) << endl;
+			cerr << "Reason: " << select_reason;
+			cerr << "***************************" << endl;
+		}
+		// avoid it_v out of range
+		if (it_v == DB.end())
+			break;
+		
+		
+	}
+}
+
 
 void VariantDB_t::printHeader(const string version, const string reference, char * date, Filters &fs, string &sample_name_N, string &sample_name_T) {
 	

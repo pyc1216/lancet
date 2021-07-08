@@ -72,6 +72,7 @@ public:
 	void setFilters (Filters * fs) { filters = fs; }
 	void setCommandLine(string cl) { command_line = cl; }
 	void addVar(const Variant_t & v);
+	void selectVar();
 	void printHeader(const string version, const string reference, char * date, Filters &fs, string &sample_name_N, string &sample_name_T);
 	void printToVCF(const string version, const string reference, char * date, Filters &fs, string &sample_name_N, string &sample_name_T);
 };

@@ -196,6 +196,7 @@ public:
 	int markRef(Ref_t * ref, int K);
 	int degree(Ori_t dir);
 	ostream & print(ostream & out) const;
+	ostream & printx(ostream & out) const;
 	int strlen() const;
 	void addReadStart(ReadId_t readid, int nodeoffset, int trim5, Ori_t ori);
 	void revreads();

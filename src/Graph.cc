@@ -800,7 +800,7 @@ void Graph_t::processPath(Path_t * path, Ref_t * ref, FILE * fp, bool printPaths
 	if (VERBOSE) { cerr << "alignment" << endl; }
 	if (VERBOSE) { cerr << "r:  " << refseq << endl; }
 	if (VERBOSE) { cerr << "p:  " << path->str() << endl; }
-
+	
 	// Get alignment
 	string ref_aln;
 	string path_aln;
@@ -841,6 +841,9 @@ void Graph_t::processPath(Path_t * path, Ref_t * ref, FILE * fp, bool printPaths
 		printVerticalAlignment(ref_aln, path_aln, path, coverageN, coverageT, refcovN, refcovT); 
 	
 	}
+	
+	unsigned short similar_variants_count = 1;
+	
 	
 	try {
 		// scan aligned sequences for differences
@@ -1038,30 +1041,71 @@ void Graph_t::processPath(Path_t * path, Ref_t * ref, FILE * fp, bool printPaths
 			// if the alignment left-shifts the indel, coverage and alignment can be out of sinc. 
 			// Fix: add coverage for K-1 bp after variant end position
 			if (transcript[ti].code != 'x') { // only do this for indels (skip SNVs)
+				if (VERBOSE) {
+					cerr << endl << "coverageN.size()=" << coverageN.size() << endl; // debug
+					cerr << endl << "K=" << K << endl; // debug
+				}
 				for (int j=0; j<=K; ++j) {
 					unsigned int idx1 = transcript[ti].end_pos + j; 
 					// add coverage
+					if (VERBOSE) {
+						cerr << "idx1=" << idx1 << endl; // debug
+					}
 					if (idx1 < coverageN.size()) { // check for out of range
 				
 						// chech if within tumor only node
 						spanner = path->pathcontig(idx1);
+						if (VERBOSE) {
+							spanner->printx(cerr);
+						}
 						if (spanner == NULL) { cerr << "Error: path position out of range: " << idx1 << endl; break; }
 						if (spanner->isStatusCnt('T')) { 
 							//if (spanner->isTumor() && !spanner->isNormal()) 
 							//cerr << "Within tumor only node" << endl;
 							transcript[ti].isSomatic = true;
 							//transcript[ti].nodesize = spanner->getSize();
-						
+							
+							// cerr << "isSomatic" << endl;
+							
 							// print read ids
 							//unordered_set<ReadId_t1>::const_iterator it;
 							//for (auto it = spanner->reads_m.begin(); it != spanner->reads_m.end(); it++) {
 							//cerr << readid2info[*it].readname_m.c_str() << endl;
 							//}
 						}
+						// else {
+						// 	spanner->print(cerr);
+						// }
+						// debug start
+						if (VERBOSE) {
+							cerr << 'N' << endl;
+							spanner->isStatusCnt('N');
+							cerr << 'B' << endl;
+							spanner->isStatusCnt('B');
+							cerr << 'E' << endl;
+							spanner->isStatusCnt('E');
+							cov_t c_n = coverageN[idx1];
+							cov_t c_t = coverageT[idx1];
+							cerr << "c_n.fwd=" << c_n.fwd << endl;
+							cerr << "c_n.rev=" << c_n.rev << endl;
+							cerr << "c_t.fwd=" << c_t.fwd << endl;
+							cerr << "c_t.rev=" << c_t.rev << endl;
+						}
+						// debug end
 						transcript[ti].addAltCovNml(coverageN[idx1]);
 						transcript[ti].addAltCovTmr(coverageT[idx1]);
 					}
 					unsigned int idx2 = transcript[ti].ref_end_pos + ref->trim5 + j;
+					// debug start
+					if (VERBOSE) {
+						cov_t r_n = ref->getCovStructAt(idx2, NML);
+						cov_t r_t = ref->getCovStructAt(idx2, TMR);
+						cerr << "r_n.fwd=" << r_n.fwd << endl;
+						cerr << "r_n.rev=" << r_n.rev << endl;
+						cerr << "r_t.fwd=" << r_t.fwd << endl;
+						cerr << "r_t.rev=" << r_t.rev << endl;
+					}
+					// debug end
 					transcript[ti].addRefCovNml(ref->getCovStructAt(idx2, NML));
 					transcript[ti].addRefCovTmr(ref->getCovStructAt(idx2, TMR));
 				}
@@ -1080,10 +1124,14 @@ void Graph_t::processPath(Path_t * path, Ref_t * ref, FILE * fp, bool printPaths
 			unsigned short ACNF = transcript[ti].getMinCovNfwd(); // alt normal cov fwd
 			unsigned short ACNR = transcript[ti].getMinCovNrev(); // alt normal cov rev			
 			
+			
+			// NOT skip zero 
+			/*
 			if (transcript[ti].code != 'x') { // for indels skip over zero coverage values (due to the +k coverage values added after variant end postion
 				ACNF = transcript[ti].getMinNon0CovNfwd(); // alt normal cov fwd
 				ACNR = transcript[ti].getMinNon0CovNrev(); // alt normal cov rev
 			}
+			*/
 			
 			unsigned short ACTF = transcript[ti].getMinCovTfwd(); // alt tumor cov fwd
 			unsigned short ACTR = transcript[ti].getMinCovTrev(); // alt tumor cov rev
@@ -1131,7 +1179,7 @@ void Graph_t::processPath(Path_t * path, Ref_t * ref, FILE * fp, bool printPaths
 			//int ACTF = (transcript[ti].code=='x') ? transcript[ti].getMinCovTfwd() : transcript[ti].getMedianCovTfwd(); // alt tumor cov fwd
 			//int ACTR = (transcript[ti].code=='x') ? transcript[ti].getMinCovTrev() : transcript[ti].getMedianCovTrev(); // alt tumor cov rev
 					
-			if(verbose) { cerr << " " << transcript[ti].pos << ":" << transcript[ti].ref << "|" << transcript[ti].qry << "|R:(" << 
+			if(verbose) { cerr << " " << transcript[ti].isSomatic << " " << transcript[ti].pos << ":" << transcript[ti].ref << "|" << transcript[ti].qry << "|R:(" << 
 						RCNF << "+," << RCNR << "-)n,(" << 
 						RCTF << "+," << RCTR << "-)t|A:(" << 								
 						ACNF << "+," << ACNR << "-)n,(" << 
@@ -1181,7 +1229,13 @@ void Graph_t::processPath(Path_t * path, Ref_t * ref, FILE * fp, bool printPaths
 					bxset_alt_T = getBXsetAt(transcript[ti].start_pos-2, transcript[ti].end_pos-1, pathseq, TMR);
 				}
 				
-				vDB->addVar(Variant_t(LR_MODE, ref->refchr, transcript[ti].pos-1, transcript[ti].ref, transcript[ti].qry, 
+				cerr << "==================s" << endl;
+ 				cerr << LR_MODE << " " << ref->refchr << " " << transcript[ti].pos-1 << " " << transcript[ti].ref << " " << transcript[ti].qry << endl;
+				cerr << RCN.first << " " << RCN.second << " " << RCT.first << " " << RCT.second << " " << ACN.first << " " << ACN.second << " " << ACT.first << " " << ACT.second << endl;
+				cerr << "==================e" << endl;
+
+				vDB->addVar(Variant_t(LR_MODE, ref->refchr, transcript[ti].pos-1, transcript[ti].ref, transcript[ti].qry, transcript[ti].isSomatic,
+					similar_variants_count,
 					RCN, RCT, ACN, ACT,
 					HPRN, HPRT, HPAN, HPAT,
 					transcript[ti].prev_bp_ref, transcript[ti].prev_bp_alt, K, STR.str(), transcript[ti].code,
