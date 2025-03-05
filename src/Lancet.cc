@@ -340,8 +340,8 @@ void loadBed(const string bedfile, vector< map<string, Ref_t *> > &reftable, Ref
 				tokens.push_back(token);
 			}
 			
-			int SP = stoi(tokens[1]) - PADDING;
-			int EP = stoi(tokens[2]) + PADDING;
+			int SP = stoi(tokens[1]);
+			int EP = stoi(tokens[2]);
 			
 			if(SP<1) {SP=1;} // start position cannnot be less than 1
 				
